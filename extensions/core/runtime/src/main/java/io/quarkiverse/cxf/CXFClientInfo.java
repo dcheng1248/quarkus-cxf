@@ -1,5 +1,22 @@
 package io.quarkiverse.cxf;
 
+import io.quarkiverse.cxf.CxfConfig.CxfGlobalClientConfig;
+import io.quarkiverse.cxf.CxfConfig.RetransmitCacheConfig;
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.Unremovable;
+import io.quarkus.tls.TlsConfiguration;
+import io.quarkus.tls.TlsConfigurationRegistry;
+import io.quarkus.tls.runtime.CertificateRecorder;
+import io.quarkus.tls.runtime.config.TlsBucketConfig;
+import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.net.JksOptions;
+import io.vertx.core.net.KeyStoreOptionsBase;
+import io.vertx.core.net.PfxOptions;
+import org.apache.cxf.annotations.SchemaValidation.SchemaValidationType;
+import org.apache.cxf.transports.http.configuration.ConnectionType;
+import org.apache.cxf.transports.http.configuration.ProxyServerType;
+
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.List;
@@ -7,27 +24,16 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
-import org.apache.cxf.annotations.SchemaValidation.SchemaValidationType;
-import org.apache.cxf.transports.http.configuration.ConnectionType;
-import org.apache.cxf.transports.http.configuration.ProxyServerType;
-
-import io.quarkiverse.cxf.CxfConfig.RetransmitCacheConfig;
-import io.quarkus.arc.Arc;
-import io.quarkus.arc.Unremovable;
-import io.quarkus.tls.TlsConfiguration;
-import io.quarkus.tls.TlsConfigurationRegistry;
-import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.net.JksOptions;
-import io.vertx.core.net.KeyStoreOptionsBase;
-import io.vertx.core.net.PfxOptions;
-
 /**
  * CXF client metadata - the complete set as known at runtime.
  */
 @Unremovable
 public class CXFClientInfo {
     private static final String DEFAULT_EP_ADDR = "http://localhost:8080";
+    /**
+     * temporary until Quarkus 3.20 is released
+     */
+    private static final String JAVA_NET_SSL_TLS_CONFIGURATION_NAME = "javax.net.ssl";
 
     private final String sei;
     private final String endpointAddress;
@@ -264,7 +270,7 @@ public class CXFClientInfo {
         this.proxyUsername = config.proxyUsername().orElse(null);
         this.proxyPassword = config.proxyPassword().orElse(null);
         this.tlsConfigurationName = config.tlsConfigurationName().orElse(null);
-        this.tlsConfiguration = tlsConfiguration(vertx, config, configKey);
+        this.tlsConfiguration = tlsConfiguration(vertx, cxfConfig.client(), config, configKey);
         this.hostnameVerifier = config.hostnameVerifier().orElse(null);
         this.schemaValidationEnabledFor = config.schemaValidationEnabledFor().orElse(null);
 
@@ -277,7 +283,8 @@ public class CXFClientInfo {
         this.configKey = configKey;
     }
 
-    static TlsConfiguration tlsConfiguration(Vertx vertx, CxfClientConfig config, String configKey) {
+    static TlsConfiguration tlsConfiguration(Vertx vertx, CxfGlobalClientConfig globalConfig, CxfClientConfig config,
+            String configKey) {
         final TlsConfigurationRegistry tlsRegistry = Arc.container().select(TlsConfigurationRegistry.class).get();
         final Optional<String> maybeTlsConfigName = config.tlsConfigurationName();
         if (maybeTlsConfigName.isEmpty()) {
@@ -336,10 +343,39 @@ public class CXFClientInfo {
                         trustStore);
                 tlsRegistry.register(registryKey, cxfTlsConfiguration);
                 return cxfTlsConfiguration;
-            }
+            } else {
+                /* use global client tls configuration */
+                if (globalConfig.tlsConfigurationName().equals(JAVA_NET_SSL_TLS_CONFIGURATION_NAME)) {
+                    /*
+                     * Temporary workaround until Quarkus 3.20 is released.
+                     * After Quarkus 3.20, this can be replaced with tlsRegistry.get(JAVA_NET_SSL_TLS_CONFIGURATION_NAME).
+                     */
+                    try {
+                        Object value = CertificateRecorder.class
+                                .getDeclaredMethod("verifyCertificateConfigInternal", TlsBucketConfig.class, Vertx.class,
+                                        String.class)
+                                .invoke(null, new JavaNetSslTlsBucketConfig(), vertx, JAVA_NET_SSL_TLS_CONFIGURATION_NAME);
 
-            /* No TLS config - that's fine too */
-            return null;
+                        if (value instanceof TlsConfiguration) {
+                            return (TlsConfiguration) value;
+                        } else {
+                            throw new IllegalStateException("The configuration option quarkus.cxf.client.tls-configuration-name"
+                                    + " is set to the default " + JAVA_NET_SSL_TLS_CONFIGURATION_NAME
+                                    + " but the required method verifyCertificateConfigInternal did not return a TlsConfiguration.");
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    Optional<TlsConfiguration> maybeTlsConfig = tlsRegistry.get(globalConfig.tlsConfigurationName());
+                    if (maybeTlsConfig.isPresent()) {
+                        return maybeTlsConfig.get();
+                    } else {
+                        throw new IllegalStateException(
+                                "No such TLS configuration quarkus.tls." + globalConfig.tlsConfigurationName());
+                    }
+                }
+            }
         } else {
             /* tls-configuration-name is set */
 

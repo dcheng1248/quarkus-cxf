@@ -1,9 +1,5 @@
 package io.quarkiverse.cxf;
 
-import java.time.Duration;
-import java.util.Map;
-import java.util.Optional;
-
 import io.quarkiverse.cxf.LoggingConfig.GlobalLoggingConfig;
 import io.quarkus.runtime.annotations.ConfigDocIgnore;
 import io.quarkus.runtime.annotations.ConfigDocMapKey;
@@ -17,6 +13,10 @@ import io.smallrye.config.WithConverter;
 import io.smallrye.config.WithDefault;
 import io.smallrye.config.WithDefaults;
 import io.smallrye.config.WithName;
+
+import java.time.Duration;
+import java.util.Map;
+import java.util.Optional;
 
 @ConfigMapping(prefix = "quarkus.cxf")
 @ConfigRoot(phase = ConfigPhase.RUN_TIME)
@@ -98,6 +98,13 @@ public interface CxfConfig {
     public Map<String, CxfEndpointConfig> endpoints();
 
     /**
+     * Global client related configurations.
+     *
+     * @asciidoclet
+     */
+    public CxfGlobalClientConfig client();
+
+    /**
      * Configure client proxies.
      *
      * @asciidoclet
@@ -136,6 +143,35 @@ public interface CxfConfig {
 
     default CxfClientConfig getClient(String key) {
         return Optional.ofNullable(clients()).map(m -> m.get(key)).orElse(null);
+    }
+
+    public interface CxfGlobalClientConfig {
+        // The formatter breaks the list with long items
+        // @formatter:off
+        /**
+         * The name of the TLS configuration to use for setting up trust store and keystore for all clients.This setting can be
+         * overridden per client using
+         * `xref:#quarkus-cxf_quarkus-cxf-client-client-name-tls-configuration-name[quarkus.cxf.client."client-name".tls-configuration-name]`
+         *
+         * For each client, if the per-client `.tls-configuration-name` or `.trust-store` or `.key-store` is configured then the
+         * relevant per client configuration will be used.
+         * Otherwise, this configuration will be used.
+         *
+         * By default, if the `javax.net.ssl.trustStore` system property is defined, then its value is honored as a truststore
+         * Otherwise, the paths `$JAVA_HOME/lib/security/jssecacerts` and `$JAVA_HOME/lib/security/cacerts` are checked
+         * and the first existing file is used as a truststore
+         * Otherwise an `IllegalStateException` is thrown.
+         *
+         * The password for opening the truststore is taken from the `javax.net.ssl.trustStorePassword` system property.
+         * If it is not set, the default password `changeit` is used.
+         *
+         * @asciidoclet
+         * @since 3.19.0
+         */
+        // @formatter:on
+        @WithDefault("javax.net.ssl")
+        public String tlsConfigurationName();
+
     }
 
     public interface InternalConfig {

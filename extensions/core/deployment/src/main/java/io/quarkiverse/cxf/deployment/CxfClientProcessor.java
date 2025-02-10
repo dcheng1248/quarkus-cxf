@@ -1,43 +1,6 @@
 package io.quarkiverse.cxf.deployment;
 
-import java.io.IOException;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Disposes;
-import jakarta.enterprise.inject.Produces;
-import jakarta.enterprise.inject.spi.InjectionPoint;
-import jakarta.inject.Inject;
-import jakarta.xml.ws.BindingProvider;
-import jakarta.xml.ws.soap.SOAPBinding;
-
-import org.apache.cxf.endpoint.Client;
-import org.apache.cxf.transport.http.HTTPTransportFactory;
-import org.apache.cxf.wsdl11.CatalogWSDLLocator;
-import org.apache.cxf.wsdl11.WSDLManagerImpl;
-import org.jboss.jandex.AnnotationInstance;
-import org.jboss.jandex.AnnotationTarget;
-import org.jboss.jandex.AnnotationValue;
-import org.jboss.jandex.ClassInfo;
-import org.jboss.jandex.DotName;
-import org.jboss.jandex.IndexView;
-import org.jboss.jandex.MethodInfo;
-import org.jboss.jandex.MethodParameterInfo;
-import org.jboss.jandex.Type;
-import org.jboss.logging.Logger;
-
 import io.quarkiverse.cxf.CXFClientData;
-import io.quarkiverse.cxf.CXFClientInfo;
 import io.quarkiverse.cxf.CXFRecorder;
 import io.quarkiverse.cxf.ClientInjectionPoint;
 import io.quarkiverse.cxf.CxfClientProducer;
@@ -45,7 +8,6 @@ import io.quarkiverse.cxf.CxfConfig;
 import io.quarkiverse.cxf.CxfFixedConfig;
 import io.quarkiverse.cxf.CxfFixedConfig.ClientFixedConfig;
 import io.quarkiverse.cxf.HTTPConduitImpl;
-import io.quarkiverse.cxf.HttpClientHTTPConduitFactory;
 import io.quarkiverse.cxf.annotation.CXFClient;
 import io.quarkiverse.cxf.graal.QuarkusCxfFeature;
 import io.quarkus.arc.deployment.GeneratedBeanBuildItem;
@@ -70,6 +32,41 @@ import io.quarkus.gizmo.FieldCreator;
 import io.quarkus.gizmo.MethodCreator;
 import io.quarkus.gizmo.MethodDescriptor;
 import io.quarkus.gizmo.ResultHandle;
+import io.quarkus.tls.runtime.CertificateRecorder;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.spi.InjectionPoint;
+import jakarta.inject.Inject;
+import jakarta.xml.ws.BindingProvider;
+import jakarta.xml.ws.soap.SOAPBinding;
+import org.apache.cxf.endpoint.Client;
+import org.apache.cxf.transport.http.HTTPTransportFactory;
+import org.apache.cxf.wsdl11.CatalogWSDLLocator;
+import org.apache.cxf.wsdl11.WSDLManagerImpl;
+import org.jboss.jandex.AnnotationInstance;
+import org.jboss.jandex.AnnotationTarget;
+import org.jboss.jandex.AnnotationValue;
+import org.jboss.jandex.ClassInfo;
+import org.jboss.jandex.DotName;
+import org.jboss.jandex.IndexView;
+import org.jboss.jandex.MethodInfo;
+import org.jboss.jandex.MethodParameterInfo;
+import org.jboss.jandex.Type;
+import org.jboss.logging.Logger;
+
+import java.io.IOException;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Find WebService implementations and deploy them.
@@ -552,6 +549,14 @@ public class CxfClientProcessor {
     @BuildStep
     ReflectiveClassBuildItem reflectiveClass() {
         return ReflectiveClassBuildItem.builder(HTTPTransportFactory.class).fields().build();
+    }
+
+    /**
+     * Temporary workaround https://github.com/quarkiverse/quarkus-cxf/issues/1680 until Quarkus 3.20 is released
+     */
+    @BuildStep
+    ReflectiveClassBuildItem tempVerifyCertificateConfigInternal() {
+        return ReflectiveClassBuildItem.builder(CertificateRecorder.class).methods().build();
     }
 
     private static class ProxyInfo {
